@@ -1,37 +1,58 @@
-from flask import Flask, jsonify, request, send_from_directory
+# backend/app.py
+from flask import Flask, jsonify, request, send_from_directory, send_file
 from flask_cors import CORS
 import os
 import uuid
+# Import your internal modules
+# Assuming models.py, utils/data_handler.py, config.py are in the backend directory
+# Adjust import paths if your structure is different
 from .config import config
 from .utils.data_handler import get_candidates, get_votes, save_votes, get_election_status, save_election_status
 from .models import Vote, VotesData, ElectionStatus
 
 def create_app(config_name='default'):
-    app = Flask(__name__, static_folder='../frontend')
+    # --- Flask App Setup ---
+    # static_folder should point to where your frontend files are located relative to this app.py
+    # If you place your frontend files in a 'static' folder inside 'backend', use 'static'
+    # If you keep them in the 'frontend' folder at the project root, you might use '../frontend'
+    # For Render deployment, it's often easier to copy/move frontend files into the backend directory
+    # Let's assume you move them to a 'static' folder within 'backend'
+    app = Flask(__name__, static_folder='static')
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
     
-    # Enable CORS for development
+    # Enable CORS for development (optional, but good practice if frontend is separate during dev)
+    # For production deployment on Render where frontend is served by this app, you might not need it
+    # unless you have specific CORS requirements for API calls from other origins.
     CORS(app)
 
     # In a real application, use proper authentication (e.g., JWT, sessions)
     # For demo, we'll keep it simple
     DEMO_VOTER_IDS = set()
 
-    # --- API Routes ---
-
-    # Serve static files from the frontend folder
+    # --- Serve Static Frontend Files ---
+    # This route serves the main index.html file for the root path
     @app.route('/')
-    def serve_index():
-        return send_from_directory(app.static_folder, 'index.html')
+    def index():
+        # send_file is used to send a specific file
+        # Make sure 'index.html' exists inside the 'static' folder
+        try:
+            return send_file(os.path.join(app.static_folder, 'index.html'))
+        except FileNotFoundError:
+            # Handle case where index.html is not found
+            return jsonify({'error': 'Frontend not found. Please ensure index.html is in the static folder.'}), 500
 
-    @app.route('/css/<path:filename>')
-    def serve_css(filename):
-        return send_from_directory(os.path.join(app.static_folder, 'css'), filename)
+    # This route serves other static files (CSS, JS, images) under the /static/ URL prefix
+    # Flask automatically serves files from the static_folder under /static/ by default,
+    # but let's make it explicit and ensure it works if the folder is named differently
+    # or if you need custom logic. The default behavior is usually sufficient.
+    # @app.route('/static/<path:filename>')
+    # def custom_static(filename):
+    #     return send_from_directory(app.static_folder, filename)
+    # The default Flask static file serving (via static_url_path and static_folder) is usually enough.
+    # So we don't need a custom route unless we have specific needs.
 
-    @app.route('/js/<path:filename>')
-    def serve_js(filename):
-        return send_from_directory(os.path.join(app.static_folder, 'js'), filename)
+    # --- API Routes (Your Existing Backend Logic) ---
 
     # @desc    Request a voter ID (simulated)
     # @route   POST /api/votes/request-id
@@ -213,6 +234,7 @@ def create_app(config_name='default'):
         if not password:
             return jsonify({'message': 'Password is required'}), 400
 
+        # Use the password from app config
         if password == app.config['ADMIN_PASSWORD']:
             # In a real app, you would set a secure session or JWT token here
             return jsonify({'message': 'Admin authenticated'}), 200
@@ -265,6 +287,8 @@ def create_app(config_name='default'):
 
     return app
 
+# This part is often not needed if you are using a WSGI server like Gunicorn
+# which calls create_app directly. But it's useful for local development with `flask run`
 if __name__ == '__main__':
-    app = create_app('development')
-    app.run(debug=True, port=5000)
+    app = create_app('development') # Use development config
+    app.run(debug=True) # Don't use debug=True in production
